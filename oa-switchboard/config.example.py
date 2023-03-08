@@ -1,3 +1,6 @@
+import os
+import tempfile
+
 LOG_LEVEL = 'DEBUG'
 
 API_URL = 'https://api.oaswitchboard.org/v2'
@@ -10,3 +13,6 @@ API_URL = 'https://api.oaswitchboard.org/v2'
 
 TOKEN_PATH = './token.txt'
 OUTPUT_FOLDER = './output'
+
+OAS_EMAIL = ""
+OAS_PASSWORD = ""
