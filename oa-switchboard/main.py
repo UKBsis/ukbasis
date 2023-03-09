@@ -1,12 +1,15 @@
 import requests
 import logging
 import json
-import pandas as pd
-from pathlib import Path
+import time
 import os
 import tempfile
-import csv
+import json_to_csv
 import config
+import shutil
+from urllib.parse import urlparse
+from datetime import date
+import sys
 
 """
 API Documentation https://bitbucket.org/oaswitchboard/api/src/master/
@@ -15,7 +18,18 @@ INFO on decoding the AWS JWT: https://stackoverflow.com/questions/55703156/aws-c
 
 """
 
-logging.basicConfig(level=config.LOG_LEVEL)
+"""
+Logging
+"""
+logfile = config.LOGFILE_DIR + date.today().strftime('%Y-%m-%d_') + config.LOGFILE_SUFFIX
+log_format = "%(asctime)s - %(levelname)-8s - %(name)s | %(message)s"
+logging.basicConfig(filename=logfile, filemode='a', format=log_format, level=config.LOG_LEVEL)
+logger = logging.getLogger('OAS_API')
+
+consoleHandler = logging.StreamHandler(sys.stdout)
+logFormatter = logging.Formatter(log_format)
+consoleHandler.setFormatter(logFormatter)
+logger.addHandler(consoleHandler)
 
 
 def _token_write(token):
@@ -44,6 +58,8 @@ def _authorize():
     # Make a POST request to the API
     response = requests.post(config.API_URL + '/authorize', json=payload)
 
+    logger.info("Performing Auth request")
+
     # Print the status code of the response
     # print(response.status_code)
     r_body = response.json()
@@ -54,63 +70,13 @@ def _authorize():
     _token_write(r_body['token'])
 
 
+
 def _get_headers():
     token = _token_read()
     return {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + token
     }
-
-
-"""
-Json Conversions Methods
-"""
-
-
-def json_to_csv():
-    filename = 'report_messages_20230208-1259.json'
-    p = Path(filename)
-    with p.open('r', encoding='utf-8') as f:
-        data = json.loads(f.read())
-    df = pd.json_normalize(data)
-    df.to_csv('report_messages_20230208-1259-json.csv')
-
-
-def json_to_csv_2():
-    def flatten_json(b, delim):
-        val = {}
-        for i in b.keys():
-            if isinstance(b[i], dict):
-                get = flatten_json(b[i], delim)
-                for j in get.keys():
-                    val[i + delim + j] = get[j]
-            else:
-                val[i] = b[i]
-        return val
-
-    filename = 'report_messages_20230208-1259.json'
-    p = Path(filename)
-    with p.open('r', encoding='utf-8') as f:
-        data = json.loads(f.read())
-
-    first_obj = data[1]
-    # flat_obj = map(lambda x: flatten_json( x, "_" ), first_obj)
-    flat_obj = flatten_json(first_obj, "_")
-    columns = [x for x in flat_obj.keys()]
-    # columns = list(set(columns))
-    type(columns)
-
-    # the whole oject
-    flat_data = map(lambda x: flatten_json(x, "_"), data)
-
-    file_name = 'report_messages_20230208-1259-json.csv'
-
-    with open(file_name, 'w') as out_file:
-        csv_w = csv.writer(out_file)
-        csv_w.writerow(columns)
-
-        for i_r in flat_data:
-            csv_w.writerow(map(lambda x: i_r.get(x, ""), columns))
 
 
 """
@@ -131,10 +97,10 @@ def post_report(report_type='excel'):
     """
     Get a report in excel or json format
     :param report_type: excel or json
-    :return:
+    :return: downloaded file name
     """
 
-    _authorize()
+    # _authorize()
 
     token = _token_read()
     headers = {
@@ -150,31 +116,57 @@ def post_report(report_type='excel'):
     payload = {
         "state": None,
         "pio": False,
-        "from": '2022-01-01',
-        "to": '2023-02-01'
+        # "from": '2023-01-01',
+        # "to": '2023-03-01'
     }
 
+    report_file = ''
     report_type = 'json' if report_type == 'json' else 'excel'
     res = requests.post(config.API_URL + '/report?type=' + report_type, headers=headers, data=json.dumps(payload))
 
+    logger.info("Starting /report request fo type %s" % report_type)
+
     if res.status_code == 200:
+        # Streamed content
         if 'content-disposition' in res.headers:
+            logger.debug('Downloading file from content-disposition')
             filename = res.headers['content-disposition'].split('filename=', 1)[1]
             report_file = os.path.join(config.OUTPUT_FOLDER, filename)
             with open(report_file, 'wb') as fd:
                 for chunk in res.iter_content(chunk_size=256):
                     fd.write(chunk)
+        # download url
+        elif res.content:
+            logger.debug('Downloading file from content URL')
+            u = urlparse(res.content)
+            filename = u.path.decode('utf-8').split('/')[-1]
+            report_file = os.path.join(config.OUTPUT_FOLDER, filename)
 
+            with requests.get(res.content, stream=True) as report_data:
+                with open(report_file, 'wb') as out_file:
+                    # out_file.write(report_data.content)
+                    shutil.copyfileobj(report_data.raw, out_file)
         else:
-            print('No data in the response')
+            logger.error('No data in the response')
+            exit()
+
+        logger.info('Downloaded report to %s' % report_file)
+
+        if report_type == 'json':
+            report_file = json_to_csv.convert_2(report_file)
+
+        return report_file
 
     else:
-        print(res.json())
-        print(res.status_code)
-        print(res.reason)
+        logger.error('Response error: %s - %s' % (res.status_code, res.reason))
+        logger.error('Info: %s' % (res.json()))
 
 
 def get_messages():
+    """
+
+    :return:
+    """
     _authorize()
     res = requests.get(config.API_URL + '/messages?startrow=1&maxrows=1', headers=_get_headers())
     # res = requests.get(config.API_URL + '/messages', headers=_get_headers())
@@ -182,8 +174,8 @@ def get_messages():
 
 
 if __name__ == "__main__":
-    # _authorize()
+    _authorize()
+    time.sleep(5)
     # get_schema()
     # get_messages()
-    post_report()
-    # json_to_csv_2()
+    report_file = post_report('json')
