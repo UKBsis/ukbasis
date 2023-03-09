@@ -3,7 +3,6 @@ import logging
 import json
 import time
 import os
-import tempfile
 import json_to_csv
 import config
 import shutil
@@ -33,6 +32,7 @@ logger.addHandler(consoleHandler)
 
 
 def _token_write(token):
+    os.makedirs(os.path.dirname(config.TOKEN_PATH), exist_ok=True)
     with open(config.TOKEN_PATH, 'w') as outfile:
         outfile.write(token)
 
@@ -153,9 +153,11 @@ def post_report(report_type='excel'):
         logger.info('Downloaded report to %s' % report_file)
 
         if report_type == 'json':
-            report_file = json_to_csv.convert_2(report_file)
+            logger.info('Converting json file to CSV')
+            csv_report_file = json_to_csv.convert_2(report_file)
+            logger.info('File converted: %s' % csv_report_file)
 
-        return report_file
+
 
     else:
         logger.error('Response error: %s - %s' % (res.status_code, res.reason))
