@@ -53,7 +53,7 @@ def convert_2(filename):
 
     output_file_name = filename + '.csv'
 
-    with open(output_file_name, 'w') as out_file:
+    with open(output_file_name, 'w', encoding='utf-8') as out_file:
         csv_w = csv.writer(out_file)
         csv_w.writerow(columns)
 
