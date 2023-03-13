@@ -1,11 +1,11 @@
 ukbasis
 ==============================
 
-Using the OAswitchboard api to download the reports
+Using the OAswitchboard api to download the reports. This work is based upon the repository by Frederico Rubini: https://github.com/frubini/ukbasis
 
 The project can be cloned from Github as follows:
 ```commandline
-git clone https://github.com/frubini/ukbasis
+git clone https://github.com/ukbsis/ukbasis
 ```
 
 The repository uses `pipenv` for environment creation and package version management. 
