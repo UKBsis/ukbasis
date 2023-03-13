@@ -16,5 +16,7 @@ pipenv install
 ```
 
 Copy the contents of `config.example.py` to `config.py` and provide the proper
-email and password details in this file. Subsequently the reports can be downloaded by
+email and password details in this file. Subsequently, the reports can be downloaded by
 running `main.py` in the `oa-switchboard` folder.
+
+Note that one may need to run `main.py` several times to get a successful response. The first attempts may result in 500 or 502 http errors.
