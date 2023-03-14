@@ -11,3 +11,9 @@ oa-switchboard/output/*
 # ignore token (if present)
 oa-switchboard/token.txt
 oa-switchboard/auth.token
+
+# ignore data
+*.json
+*.xlsx
+*.xls
+*.csv

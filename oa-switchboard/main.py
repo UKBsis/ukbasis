@@ -114,8 +114,8 @@ def post_report(report_type='excel'):
     }
 
     payload = {
-        "state": None,
-        "pio": False,
+        # "state": None,
+        # "pio": False,
         # "from": '2023-01-01',
         # "to": '2023-03-01'
     }
@@ -124,7 +124,7 @@ def post_report(report_type='excel'):
     report_type = 'json' if report_type == 'json' else 'excel'
     res = requests.post(config.API_URL + '/report?type=' + report_type, headers=headers, data=json.dumps(payload))
 
-    logger.info("Starting /report request fo type %s" % report_type)
+    logger.info("Starting /report request of type %s" % report_type)
 
     if res.status_code == 200:
         # Streamed content
@@ -164,20 +164,66 @@ def post_report(report_type='excel'):
         logger.error('Info: %s' % (res.json()))
 
 
-def get_messages():
+def get_messages(startrow: int = 1, maxrows: int = 50):
+    """
+    Gets the messages in batches. It starts at row 'startrow' and retrieves 'maxrows' messages.
+    :param startrow: integer on which row to start
+    :param maxrows: integer with the number of messages to retrieve. Maximum number of messages in one go is 50
+    :return: dictionary with results
     """
 
-    :return:
-    """
+    # authorize first
     _authorize()
-    res = requests.get(config.API_URL + '/messages?startrow=1&maxrows=1', headers=_get_headers())
-    # res = requests.get(config.API_URL + '/messages', headers=_get_headers())
-    print(json.dumps(res.json(), indent=2))
+
+    # request the messages
+    res = requests.get(
+        config.API_URL + '/messages?startrow={}&maxrows={}'.format(startrow, maxrows),
+        headers=_get_headers()
+    )
+    # TODO: pretty catching of error such as done in get_report
+    # TODO: write to logger
+    # print("Total number of messages in database {}".format(res.json()["total"]))
+    # print("Number of messages {}".format(len(res.json()["messages"])))
+    # print("ID's: {}".format(", ".join([str(x["id"]) for x in res.json()["messages"]])))
+    # print(json.dumps(res.json(), indent=2))
+    return res.json()
+
+
+def get_all_messages():
+    """
+    Returns all messages by retrieving them in batches
+    :return: None
+    """
+
+    # get first row only
+    first_item = get_messages(startrow=1, maxrows=1)
+
+    # find out how many messages there are
+    total_number_of_messages = first_item["total"]
+    logger.info("Starting retrieving all {} messages".format(total_number_of_messages))
+
+    # get other batches in a loop and combine
+    out = list()
+    for start_row in range(1, total_number_of_messages, 50):
+
+        # retrieve the messages in a batch of 50
+        batch = get_messages(startrow=start_row, maxrows=50)["messages"]
+
+        # extend the list
+        out = out + batch
+
+    # save in json file
+    filename = "messages_{}.json".format(time.strftime("%Y%m%d-%H%M"))
+    messages_file = os.path.join(config.OUTPUT_FOLDER, filename)
+    with open(messages_file, "w") as outfile:
+        json.dump(out, outfile)
+
+    logger.info('Downloaded messages to %s' % messages_file)
 
 
 if __name__ == "__main__":
     _authorize()
-    time.sleep(5)
+    # time.sleep(5)
     # get_schema()
-    # get_messages()
-    report_file = post_report('json')
+    get_all_messages()
+    # report_file = post_report('excel')
