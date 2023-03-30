@@ -41,7 +41,7 @@ def convert_2(filename):
     with p.open('r', encoding='utf-8') as f:
         data = json.loads(f.read())
 
-    first_obj = data[1]
+    first_obj = data[0]
     # flat_obj = map(lambda x: flatten_json( x, "_" ), first_obj)
     flat_obj = flatten_json(first_obj, "_")
     columns = [x for x in flat_obj.keys()]

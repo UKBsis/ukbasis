@@ -1,3 +1,4 @@
+import re
 import requests
 import logging
 import json
@@ -7,8 +8,9 @@ import json_to_csv
 import config
 import shutil
 from urllib.parse import urlparse
-from datetime import date
+from datetime import date, datetime
 import sys
+from dateutil.rrule import rrule, MONTHLY
 
 """
 API Documentation https://bitbucket.org/oaswitchboard/api/src/master/
@@ -70,7 +72,6 @@ def _authorize():
     _token_write(r_body['token'])
 
 
-
 def _get_headers():
     token = _token_read()
     return {
@@ -93,9 +94,11 @@ def get_schema():
     print(res.json())
 
 
-def post_report(report_type='excel'):
+def post_report(report_type='excel', start_date=None, end_date=None):
     """
     Get a report in excel or json format
+    :param end_date:
+    :param start_date:
     :param report_type: excel or json
     :return: downloaded file name
     """
@@ -116,9 +119,16 @@ def post_report(report_type='excel'):
     payload = {
         "state": None,
         "pio": False,
-        # "from": '2023-01-01',
-        # "to": '2023-03-01'
     }
+
+    if start_date and end_date:
+        r = re.compile('[\d]{4}-[\d]{2}-[\d]{2}')
+        if r.match(start_date) is None or r.match(end_date) is None:
+            logger.error("Start date or end date are not valid")
+            raise TypeError("Start date or end date are not valid")
+
+        payload["from"] = start_date
+        payload["to"] = end_date
 
     report_file = ''
     report_type = 'json' if report_type == 'json' else 'excel'
@@ -127,20 +137,29 @@ def post_report(report_type='excel'):
     logger.info("Starting /report request fo type %s" % report_type)
 
     if res.status_code == 200:
+
         # Streamed content
         if 'content-disposition' in res.headers:
             logger.debug('Downloading file from content-disposition')
-            filename = res.headers['content-disposition'].split('filename=', 1)[1]
-            report_file = os.path.join(config.OUTPUT_FOLDER, filename)
+
+            report_file = _get_report_file(
+                res.headers['content-disposition'].split('filename=', 1)[1],
+                payload
+            )
+
             with open(report_file, 'wb') as fd:
                 for chunk in res.iter_content(chunk_size=256):
                     fd.write(chunk)
+
         # download url
         elif res.content:
             logger.debug('Downloading file from content URL')
             u = urlparse(res.content)
-            filename = u.path.decode('utf-8').split('/')[-1]
-            report_file = os.path.join(config.OUTPUT_FOLDER, filename)
+
+            report_file = _get_report_file(
+                u.path.decode('utf-8').split('/')[-1],
+                payload
+            )
 
             with requests.get(res.content, stream=True) as report_data:
                 with open(report_file, 'wb') as out_file:
@@ -164,12 +183,52 @@ def post_report(report_type='excel'):
         logger.error('Info: %s' % (res.json()))
 
 
+def _get_report_file(filename, payload):
+    """
+    Generate report filename
+    :param filename:
+    :param payload:
+    :return:
+    """
+    if "from" in payload:
+        name_parts = filename.split('.')
+        filename = ("%s_%s_%s.%s" % (name_parts[0], payload['from'], payload['to'], name_parts[1]))
+
+    return os.path.join(config.OUTPUT_FOLDER, filename)
+
+
+def get_more_reports(report_type, start_month, end_month):
+    """
+    Get more reports in batches of one month
+    :param report_type:
+    :param start_month:
+    :param end_month:
+    :return:
+    """
+    logger.info('## START MONTHLY PROCESSING from %s until %s', start_month, end_month)
+
+    start_date = datetime.fromisoformat(start_month)
+    end_date = datetime.fromisoformat(end_month)
+
+    start_itr = start_date
+    for end_itr in rrule(freq=MONTHLY, dtstart=start_date, until=end_date)[1:]:
+        logger.info('Processing messages from: %s until: %s ' % (start_itr.strftime('%Y-%m-%d'), end_itr.strftime('%Y-%m-%d')))
+
+        post_report(
+            report_type=report_type,
+            start_date=start_itr.strftime('%Y-%m-%d'),
+            end_date=end_itr.strftime('%Y-%m-%d')
+        )
+        # change start iteration date to the current end iteration date
+        start_itr = end_itr
+
+
 def get_messages():
     """
 
     :return:
     """
-    _authorize()
+    # _authorize()
     res = requests.get(config.API_URL + '/messages?startrow=1&maxrows=1', headers=_get_headers())
     # res = requests.get(config.API_URL + '/messages', headers=_get_headers())
     print(json.dumps(res.json(), indent=2))
@@ -178,6 +237,14 @@ def get_messages():
 if __name__ == "__main__":
     _authorize()
     time.sleep(5)
+
     # get_schema()
     # get_messages()
-    report_file = post_report('json')
+
+    post_report('json')
+
+    """
+    Get report on In batches of one Month per file
+    use date format: YYYY-MM-DD
+    """
+    # get_more_reports(report_type='json', start_month='2021-11-01', end_month='2022-03-01')
